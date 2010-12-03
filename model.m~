@@ -109,7 +109,7 @@ function model()
                 m = neurons(neuron).channels(channel).m;
                 h = neurons(neuron).channels(channel).h;
                 if (channel<=2), V = neurons(neuron).compartments(2).voltage; else V = neurons(neuron).compartments(1).voltage; end % Get voltage from correct compartment.
-                g_max = g_max_all(1,1); % FIX
+                g_max = g_max_all(1,1);
                 switch channel % Lookup the channel activation and inactivation exponents.
                     case 1      % I_Na
                         a = 3; b = 1; 
