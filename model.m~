@@ -1,5 +1,15 @@
 % This model is based on Soto-Trevino et all 2005 and adds Q10's.
 
+% TODO
+%   Add Q10s
+%   Save history
+%   Display history
+%   Add RK4 integration
+%   Check signs on all currents
+
+% Bugs
+%   [Ca++] can go negative. 
+
 function model()
     tic
     AB = 1; % Enumerate cell types.
@@ -8,14 +18,14 @@ function model()
     AIS  = 2; % (Axon initial segment.)
     
     % Model parameters %
-    dt                  = 0.05;    % [ms] Time step
-    sim_length          = 1*1000; % [ms] Simulation length
-    num_neurons         = 2;       % Number of neurons
-    num_channels        = 10;      % Number of ion channel types.
-    compartment_num     = 2;       % Number of compartments per neuron. Compartment 1 is soma. Compartment 2 is spike initiation zone.
-    g_gap               = 0.75;    % [uS] Conductance between the soma of the two neurons.
-    neurons(AB).g_axial = 0.3;     % [uS] Conductance between the two compartments of the AB neuron.
-    neurons(PD).g_axial = 1.05;    % [uS] Conductance between the two compartments of the PD neuron.
+    dt                  = 0.05;     % [ms] Time step
+    sim_length          = 0.2*1000; % [ms] Simulation length
+    num_neurons         = 2;        % Number of neurons
+    num_channels        = 10;       % Number of ion channel types.
+    num_compartments    = 2;        % Number of compartments per neuron. Compartment 1 is soma. Compartment 2 is spike initiation zone.
+    g_gap               = 0.75;     % [uS] Conductance between the soma of the two neurons.
+    neurons(AB).g_axial = 0.3;      % [uS] Conductance between the two compartments of the AB neuron.
+    neurons(PD).g_axial = 1.05;     % [uS] Conductance between the two compartments of the PD neuron.
     
     neurons(AB).compartments(AIS).C  =  1.5; % [nF] Capacitance of each compartment.
     neurons(AB).compartments(Soma).C =  9.0; % [nF]
@@ -59,17 +69,27 @@ function model()
     % Starting conditions
     starting_voltage = -70; % [mV] 
     for neuron = 1:num_neurons
-        for compartment = 1:compartment_num 
+        for compartment = 1:num_compartments 
             neurons(neuron).compartments(compartment).voltage = starting_voltage; 
         end
         neurons(neuron).Ca = Ca_steady_state; % Ca++ concentration in soma. (Axon lacks Ca++ gated or permiable channels.)
+        for channel = 1:num_channels
+            neurons(neuron).channels(channel).m = 0; % Begin with all channels closed.
+            neurons(neuron).channels(channel).h = 0;
+        end
     end
         
 
+    % History variables
+    V_hist = zeros(num_neurons, num_compartments, ceil(sim_length/dt));
+    time_step = 1;
+    
     %%%%%%%%%%%%%%%%%
     %   Main Loop   %
     %%%%%%%%%%%%%%%%%
     for sim_time = dt:dt:sim_length
+
+        disp('xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx')
 
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         % Find channel activation and inactivations  %
@@ -79,7 +99,7 @@ function model()
             for channel = 1:num_channels
                 if channel <= 2, compartment = 2; else compartment = 1; end % First two channels are in axon initial segment.
                 V = neurons(neuron).compartments(compartment).voltage; % [mV]
-                [m h] = get_channel_state(neuron, channel, V, Ca);
+                [m h] = get_channel_state(neuron, channel, V, Ca, neurons(neuron).channels(channel).m, neurons(neuron).channels(channel).h, dt);
                 neurons(neuron).channels(channel).m = m;
                 neurons(neuron).channels(channel).h = h;
             end
@@ -93,6 +113,9 @@ function model()
             % Find Ca reversal potential via Nernst equation.
             Ca_in = neurons(neuron).Ca;
             E_Ca = R*T/(z*F)*log(Ca_out/Ca_in);
+            Ca_in
+            Ca_out
+            E_Ca
             E_all(3) = E_Ca; % Set reversal values for Ca++. 
             E_all(4) = E_Ca;
             
@@ -127,9 +150,28 @@ function model()
                         
                 g_channel = g_max * m^a * h^b;
                 neurons(neuron).channels(channel).I = g_channel * (V - E_all(channel));
+                if (neurons(neuron).channels(channel).I ~= abs(neurons(neuron).channels(channel).I) && neurons(neuron).channels(channel).I ~= -abs(neurons(neuron).channels(channel).I))
+                    disp ('Current has complex component. Stopping.')
+                    neurons(neuron).channels(channel).I
+                    neuron
+                    channel
+                    V
+                    g_channel
+                    E_all(channel)
+                    STOP
+                end
+                if (g_channel ~= abs(g_channel) && -g_channel ~= abs(g_channel)) % Testing for imaginary component.
+                    neuron
+                    channel
+                    V
+                    g_channel
+                    E_all(channel)
+                    STOP
+                end
             end
             for compartment = 1:2 % Calculate leak currents
                 I_leak(neuron, compartment) = g_leaks(neuron, compartment) * neurons(neuron).compartments(compartment).voltage;
+                I_leak(neuron, compartment)
             end
             
         end
@@ -159,7 +201,7 @@ function model()
             end
             somatic_current = somatic_current + I_leak(neuron,1);
                         
-            total_soma_current = somatic_current + axial_current + coupling_current ; % FIX signs on currents. (And double check sign on axial current.)
+            total_soma_current = somatic_current + axial_current + coupling_current;  % FIX signs on currents. (And double check sign on axial current.)
             total_AIS_current  = AIS_current     + axial_current;
             
             dV_soma = total_soma_current / neurons(neuron).compartments(1).C * dt;
@@ -167,6 +209,11 @@ function model()
             
             neurons(neuron).compartments(1).voltage = neurons(neuron).compartments(1).voltage + dV_soma;
             neurons(neuron).compartments(2).voltage = neurons(neuron).compartments(1).voltage + dV_axon;
+            
+            V_hist(neuron, 1, time_step) = neurons(neuron).compartments(1).voltage;
+            V_hist(neuron, 2, time_step) = neurons(neuron).compartments(2).voltage;
+            
+            neurons(neuron).compartments(1).voltage
         end
         
         %%%%%%%%%%%%%%%%%%%%%
@@ -177,14 +224,49 @@ function model()
             I_CaT = neurons(neuron).channels(3).I;
             I_CaS = neurons(neuron).channels(4).I;            
             I_Ca  = I_CaT + I_CaS; 
-            dCa   = ( -neurons(neuron).F_Ca * I_Ca - neurons(neuron).Ca + Ca_steady_state) / neurons(neuron).tau_Ca * dt; 
-            neurons(neuron).Ca = neurons(neuron).Ca + dCa;
+            Ca = neurons(neuron).Ca;
+            F_Ca = neurons(neuron).F_Ca;
+            tau_Ca = neurons(neuron).tau_Ca;
+            RK4 = true;
+            if (RK4 == true)
+                k1 = ( -F_Ca * I_Ca -  Ca              + Ca_steady_state) / tau_Ca;
+                k2 = ( -F_Ca * I_Ca - (Ca + 0.5*dt*k1) + Ca_steady_state) / tau_Ca;
+                k3 = ( -F_Ca * I_Ca - (Ca + 0.5*dt*k2) + Ca_steady_state) / tau_Ca;
+                k4 = ( -F_Ca * I_Ca - (Ca +     dt*k3) + Ca_steady_state) / tau_Ca;
+                dCa = (1/6)*dt*(k1 + 2*k2 + 2*k3 + k4);
+                neurons(neuron).Ca = Ca + dCa;
+            else
+                dCa = (-F_Ca * I_Ca - Ca + Ca_steady_state) / tau_Ca * dt;
+                neurons(neuron).Ca = neurons(neuron).Ca + dCa;
+            end
+            if (neurons(neuron).Ca < 0)
+                disp('Negative [Ca++] value. Stopping')
+                Ca 
+                dCa
+                I_Ca
+
+                F_Ca
+                tau_Ca
+                disp('.')
+                STOP
+            end
         end
-    if sim_time/100 == floor(sim_time/100),
-        sim_time
-    end
+        if sim_time/100 == floor(sim_time/100),
+            sim_time
+        end
+        time_step = time_step+1
     end % End main loop
     toc
+    
+    
+    figure
+    hold on
+    plot(squeeze(V_hist(1,1,:)),'r')
+    plot(squeeze(V_hist(2,2,:)),'g')
+    plot(squeeze(V_hist(1,2,:)),'b')
+    plot(squeeze(V_hist(2,2,:)),'c')
+    hold off
+    
 end % End function
 
 
@@ -192,7 +274,7 @@ end % End function
 % Functions  %
 %%%%%%%%%%%%%%
 
-function [m, h] = get_channel_state(neuron, channel, V, Ca)
+function [m, h] = get_channel_state(neuron, channel, V, Ca, old_m, old_h, dt)
     if neuron == 1, neuron_type = 1; else neuron_type = 2; end
 
     switch channel
@@ -267,9 +349,11 @@ function [m, h] = get_channel_state(neuron, channel, V, Ca)
         otherwise
             STOP
     end
-    % Integrate to find m and h at next time step. 
-    m = m_inf * tau_m; %%%%%%%%% FIX: Placeholder code %%%%%%%%%%
-    h = h_inf * tau_h;
+    % Integrate to find m and h at next time step.
+    dm = (m_inf - old_m)/tau_m * dt;
+    dh = (h_inf - old_h)/tau_h * dt;
+    m = old_m + dm;
+    h = old_h + dh;
 end
 
 % Sigmoid functions for calculating channel dynamics
