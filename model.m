@@ -6,6 +6,7 @@
 %   Display history
 %   Add RK4 integration
 %   Check signs on all currents - IN PROGRESS
+%   Check unit prefixes in all calculations.
 
 % Bugs
 %   [Ca++] can go negative. 
@@ -18,36 +19,36 @@ function model()
     AIS  = 2; % (Axon initial segment.)
     
     % Model parameters %
-    dt                  = 0.05;     % [ms] Time step
-    sim_length          = 0.074*1000; % [ms] Simulation length
-    num_neurons         = 2;        % Number of neurons
-    num_channels        = 10;       % Number of ion channel types.
-    num_compartments    = 2;        % Number of compartments per neuron. Compartment 1 is soma. Compartment 2 is spike initiation zone.
-%     g_gap               = 0.75;     % [uS] Conductance between the soma of the two neurons.
-%     neurons(AB).g_axial = 0.3;      % [uS] Conductance between the two compartments of the AB neuron.
-%     neurons(PD).g_axial = 1.05;     % [uS] Conductance between the two compartments of the PD neuron.
+    dt                  = 0.05*10^-3;  % [s] Time step
+    sim_length          = 0.0742;      % [s] Simulation length
+    num_neurons         = 2;           % Number of neurons
+    num_channels        = 10;          % Number of ion channel types.
+    num_compartments    = 2;           % Number of compartments per neuron. Compartment 1 is soma. Compartment 2 is spike initiation zone.
+%     g_gap               = 0.75*10^-6; % [S] Conductance between the soma of the two neurons.
+%     neurons(AB).g_axial = 0.3 *10^-6; % [S] Conductance between the two compartments of the AB neuron.
+%     neurons(PD).g_axial = 1.05*10^-6; % [S] Conductance between the two compartments of the PD neuron.
 
     % Testing with no connections between compartments.
-    g_gap               = 0;     % [uS] Conductance between the soma of the two neurons.
-    neurons(AB).g_axial = 0;     % [uS] Conductance between the two compartments of the AB neuron.
-    neurons(PD).g_axial = 0;     % [uS] Conductance between the two compartments of the PD neuron.    
+    g_gap               = 0;     % [S] Conductance between the soma of the two neurons.
+    neurons(AB).g_axial = 0;     % [S] Conductance between the two compartments of the AB neuron.
+    neurons(PD).g_axial = 0;     % [S] Conductance between the two compartments of the PD neuron.    
     
-    neurons(AB).compartments(AIS).C  =  1.5; % [nF] Capacitance of each compartment.
-    neurons(AB).compartments(Soma).C =  9.0; % [nF]
-    neurons(PD).compartments(AIS).C  =  6.0; % [nF]
-    neurons(PD).compartments(Soma).C = 12.0; % [nF]
+    neurons(AB).compartments(AIS).C  =  1.5*10^-9; % [F] Capacitance of each compartment.
+    neurons(AB).compartments(Soma).C =  9.0*10^-9; % [F]
+    neurons(PD).compartments(AIS).C  =  6.0*10^-9; % [F]
+    neurons(PD).compartments(Soma).C = 12.0*10^-9; % [F]
     
     % Constants for Ca++ dynamics
     R = 8.31447215;  % [J/mol/K] Ideal gas constant
     T = 273.15 + 18; % [Kelvin]  Temperature
     z = +2;          % Charge of Ca++.
     F = 96485.3399;  % [C/mol] Faraday's constant
-    Ca_out             = 13000; % [uM]
-    Ca_steady_state    = 0.5;   % [uM]
-    neurons(AB).tau_Ca = 303;   % [ms]
-    neurons(PD).tau_Ca = 300;   % [ms]
-    neurons(AB).F_Ca   = 0.418; % [uM/nA]
-    neurons(PD).F_Ca   = 0.515; % [uM/nA]
+    Ca_out             = 13000*10^-6; % [M]
+    Ca_steady_state    = 0.5*10^-6;   % [M]
+    neurons(AB).tau_Ca = 0.303;       % [s]
+    neurons(PD).tau_Ca = 0.300;       % [s]
+    neurons(AB).F_Ca   = 0.418*10^3;  % [M/A]
+    neurons(PD).F_Ca   = 0.515*10^3;  % [M/A]
 
     % Reversal potentials.
     E_Na   =  50; % [mV] 
@@ -58,23 +59,25 @@ function model()
     E_KCa  = -80;
     E_A    = -80;
     E_proc =   0;
-    E_all = [E_Na E_K E_Ca E_Ca E_Nap E_H E_K E_KCa E_A E_proc]; % Store reversal potentials in vector which matches the channel vector. (Ca values are placeholders.)
+    E_all = [E_Na E_K E_Ca E_Ca E_Nap E_H E_K E_KCa E_A E_proc]*10^-3; % [V] Store reversal potentials in vector which matches the channel vector. (Ca values are placeholders.)
 
     % Maximal conductances
     %      Channels are:
     %      (AIS)  NA   K     (soma) CaT   CaS nap   H      K       KCa     A      proc   
-    g_max_all = [ 300  52.5         55.2  9   2.7   0.054  1890    6000    200    570; ... % AB % [uS] Conductance values for all (non-leak) channels.
-                 1100  150          22.5  60  4.38  0.219  1576.8  251.85  39.42  0   ];   % PD
+    g_max_all = [ 300  52.5         55.2  9   2.7   0.054  1890    6000    200    570; ...       % AB % [S] Conductance values for all (non-leak) channels.
+                 1100  150          22.5  60  4.38  0.219  1576.8  251.85  39.42  0   ]*10^-6;   % PD
+             
+    g_max_all = [0 0    0 0 0 0 0 0 0 0; 0 0    0 0 0 0 0 0 0 0 ];
 
     % Leak conductances
     %              Soma  AIS
-	g_leaks   = [  0.045 0.0018;   ... % AB % [uS] Leak conductances [AB-soma, AB-AIS; PD-soma PD-AIS] (Note: Compartment order different than for g_max_all.)
-                   0.105 0.00081 ];    % PD
+	g_leaks   = [  0.045 0.0018;   ...     % AB % [S] Leak conductances [AB-soma, AB-AIS; PD-soma PD-AIS] (Note: Compartment order different than for g_max_all.)
+                   0.105 0.00081 ]*10^-6;  % PD
                
     
     
     % Starting conditions
-    starting_voltage = -70; % [mV] 
+    starting_voltage = -70*10^-3; % [V] 
     for neuron = 1:num_neurons
         for compartment = 1:num_compartments 
             neurons(neuron).compartments(compartment).voltage = starting_voltage; 
@@ -105,7 +108,7 @@ function model()
             Ca = neurons(neuron).Ca;
             for channel = 1:num_channels
                 if channel <= 2, compartment = 2; else compartment = 1; end % First two channels are in axon initial segment.
-                V = neurons(neuron).compartments(compartment).voltage; % [mV]
+                V = neurons(neuron).compartments(compartment).voltage; % [V]
                 [m h] = get_channel_state(neuron, channel, V, Ca, neurons(neuron).channels(channel).m, neurons(neuron).channels(channel).h, dt);
                 neurons(neuron).channels(channel).m = m;
                 neurons(neuron).channels(channel).h = h;
@@ -121,7 +124,6 @@ function model()
             Ca_in = neurons(neuron).Ca;
             E_Ca = R*T/(z*F)*log(Ca_out/Ca_in);
             Ca_in
-            Ca_out
             E_Ca
             E_all(3) = E_Ca; % Set reversal values for Ca++. 
             E_all(4) = E_Ca;
@@ -144,7 +146,7 @@ function model()
                         a = 3; b = 1;
                     case 6      % I_h
                         a = 1; b = 0;
-                    case 7      % I_k (soma)
+                    case 7      % I_K (soma)
                         a = 4; b = 0;
                     case 8      % I_KCa
                         a = 4; b = 0;
