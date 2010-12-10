@@ -5,8 +5,8 @@
 %   Save history
 %   Display history
 %   Add RK4 integration
-%   Check signs on all currents - IN PROGRESS
-%   Check unit prefixes in all calculations.
+%   Check signs on all currents - DONE
+%   Check unit prefixes in all calculations. - DONE
 
 % Bugs
 %   [Ca++] can go negative. 
@@ -19,19 +19,20 @@ function model()
     AIS  = 2; % (Axon initial segment.)
     
     % Model parameters %
-    dt                  = 0.05*10^-3;  % [s] Time step
-    sim_length          = 0.0742;      % [s] Simulation length
+    dt                  = 0.1*10^-3;  % [s] Time step
+    I_inj               = [0 0];       % [Amp]
+    sim_length          = 1.0;         % [s] Simulation length
     num_neurons         = 2;           % Number of neurons
     num_channels        = 10;          % Number of ion channel types.
     num_compartments    = 2;           % Number of compartments per neuron. Compartment 1 is soma. Compartment 2 is spike initiation zone.
-%     g_gap               = 0.75*10^-6; % [S] Conductance between the soma of the two neurons.
-%     neurons(AB).g_axial = 0.3 *10^-6; % [S] Conductance between the two compartments of the AB neuron.
-%     neurons(PD).g_axial = 1.05*10^-6; % [S] Conductance between the two compartments of the PD neuron.
+    g_gap               = 0.75*10^-6; % [S] Conductance between the soma of the two neurons.
+    neurons(AB).g_axial = 0.3 *10^-6; % [S] Conductance between the two compartments of the AB neuron.
+    neurons(PD).g_axial = 1.05*10^-6; % [S] Conductance between the two compartments of the PD neuron.
 
     % Testing with no connections between compartments.
-    g_gap               = 0;     % [S] Conductance between the soma of the two neurons.
-    neurons(AB).g_axial = 0;     % [S] Conductance between the two compartments of the AB neuron.
-    neurons(PD).g_axial = 0;     % [S] Conductance between the two compartments of the PD neuron.    
+      g_gap               = 0;     % [S] Conductance between the soma of the two neurons.
+%     neurons(AB).g_axial = 0;     % [S] Conductance between the two compartments of the AB neuron.
+%     neurons(PD).g_axial = 0;     % [S] Conductance between the two compartments of the PD neuron.    
     
     neurons(AB).compartments(AIS).C  =  1.5*10^-9; % [F] Capacitance of each compartment.
     neurons(AB).compartments(Soma).C =  9.0*10^-9; % [F]
@@ -67,14 +68,17 @@ function model()
     g_max_all = [ 300  52.5         55.2  9   2.7   0.054  1890    6000    200    570; ...       % AB % [S] Conductance values for all (non-leak) channels.
                  1100  150          22.5  60  4.38  0.219  1576.8  251.85  39.42  0   ]*10^-6;   % PD
              
-    g_max_all = [0 0    0 0 0 0 0 0 0 0; 0 0    0 0 0 0 0 0 0 0 ];
+    %g_max_all = [0 0    0 0 0 0 0 0 0 0; 0 0    0 0 0 0 0 0 0 0 ];
 
     % Leak conductances
     %              Soma  AIS
 	g_leaks   = [  0.045 0.0018;   ...     % AB % [S] Leak conductances [AB-soma, AB-AIS; PD-soma PD-AIS] (Note: Compartment order different than for g_max_all.)
                    0.105 0.00081 ]*10^-6;  % PD
                
-    
+    % Leak reversal potentials
+    %              Soma  AIS
+    E_leak     = [ -50   -60;  ...         % AB [V]
+                   -55   -55  ] * 10^-3;   % PD
     
     % Starting conditions
     starting_voltage = -70*10^-3; % [V] 
@@ -115,16 +119,17 @@ function model()
             end
         end
         
-        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-        % Calculate channel currents  %
-        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+        % Calculate channel conductances  %
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
+        % Find channel conductances
         for neuron = 1:num_neurons
             % Find Ca reversal potential via Nernst equation.
             Ca_in = neurons(neuron).Ca;
             E_Ca = R*T/(z*F)*log(Ca_out/Ca_in);
-            Ca_in
-            E_Ca
+            %Ca_in
+            %E_Ca
             E_all(3) = E_Ca; % Set reversal values for Ca++. 
             E_all(4) = E_Ca;
             
@@ -158,26 +163,9 @@ function model()
                 end
                 
                 g_channel = g_max * m^a * h^b;
+                g_channels(neuron, channel) = g_channel;
                 if (g_channel < 0)
-                    disp ('Negative conductance. Stopping.')
-                    g_max
-                    m
-                    a
-                    h
-                    b
-                    STOP
-                end
-                
-                neurons(neuron).channels(channel).I = g_channel * (V - E_all(channel));
-                if (neurons(neuron).channels(channel).I ~= abs(neurons(neuron).channels(channel).I) && neurons(neuron).channels(channel).I ~= -abs(neurons(neuron).channels(channel).I))
-                    disp ('Current has complex component or is NaN. Stopping.')
-                    neurons(neuron).channels(channel).I
-                    neuron
-                    channel
-                    V
-                    g_channel
-                    E_all(channel)
-                    STOP
+                    disp ('Negative conductance. Stopping.'); STOP
                 end
                 if (g_channel ~= abs(g_channel) && -g_channel ~= abs(g_channel)) % Testing for imaginary component.
                     neuron
@@ -186,19 +174,41 @@ function model()
                     g_channel
                     E_all(channel)
                     STOP
+                end                
+            end
+        end
+        
+        %%%%%%%%%%%%%%%%%%%%%%
+        % Calculate currents %
+        %%%%%%%%%%%%%%%%%%%%%%
+
+        for neuron=1:num_neurons
+            % Find active channel currents
+            for channel=1:num_channels
+                neurons(neuron).channels(channel).I = g_channels(neuron, channel) * (V - E_all(channel)); 
+                if (neurons(neuron).channels(channel).I~=abs(neurons(neuron).channels(channel).I) && neurons(neuron).channels(channel).I~=-abs(neurons(neuron).channels(channel).I))
+                    disp ('Current has imaginary component or is NaN. Stopping.')
+                    neurons(neuron).channels(channel).I
+                    neuron
+                    channel
+                    V
+                    g_channel
+                    E_all(channel)
+                    STOP
                 end
             end
-            for compartment = 1:2 % Calculate leak currents
-                I_leak(neuron, compartment) = -g_leaks(neuron, compartment) * neurons(neuron).compartments(compartment).voltage;
+            % Calculate leak currents
+            for compartment = 1:2 
+                I_leak(neuron, compartment) = -g_leaks(neuron, compartment) * (neurons(neuron).compartments(compartment).voltage - E_leak(neuron, compartment));
                 leak = I_leak(neuron, compartment);
                 if (leak == Inf || leak == -Inf)
                     disp('+/- Inf leak current. Stopping.')
                     leak
                     STOP
                 end
-            end
-            
+            end            
         end
+
         
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         % Find new voltage of each compartment %      
@@ -211,37 +221,67 @@ function model()
         % Find currents within each neuron
         for neuron = 1:num_neurons
             % Sum the currents for each compartment
-            dV_axial = neurons(neuron).compartments(Soma).voltage - neurons(AIS).compartments(Soma).voltage; % NOTE: Positive for current flowing into AIS from soma.
-            axial_current   = dV_axial * neurons(neuron).g_axial;
+            dV_axial = neurons(neuron).compartments(Soma).voltage - neurons(neuron).compartments(AIS).voltage % NOTE: Positive for current flowing into AIS from soma.
+            axial_current   = dV_axial * neurons(neuron).g_axial *1000000000 %%%%%%%%%%%%%%%%%%%%%%%%%%%%% TEST
             AIS_current     = 0;
             somatic_current = 0;
             for channel = 1:2
-                AIS_current     = AIS_current     + neurons(neuron).channels(channel).I
+                AIS_current     = AIS_current     + neurons(neuron).channels(channel).I;
             end
-            AIS_current = AIS_current + I_leak(neuron, AIS)
+            AIS_current = AIS_current + I_leak(neuron, AIS);
 
             for channel = 3:num_channels
                 %channel
                 %neurons(neuron).channels(channel).I
                 somatic_current = somatic_current + neurons(neuron).channels(channel).I;
             end
-            somatic_current = somatic_current + I_leak(neuron, Soma)
+            %I_leak(neuron, Soma)
+            somatic_current = somatic_current + I_leak(neuron, Soma);
                         
             coupling_current_direction = ((neuron==1)*2 -1); % +1 for cell 1. -1 for cell 2.
             total_soma_current = somatic_current - axial_current + coupling_current*coupling_current_direction;  % FIX: Verify signs on currents. 
             total_AIS_current  = AIS_current     + axial_current;
             
-            dV_soma = total_soma_current / neurons(neuron).compartments(Soma).C * dt;
-            dV_axon = total_AIS_current  / neurons(neuron).compartments(AIS ).C * dt;
             
-            neurons(neuron).compartments(Soma).voltage = neurons(neuron).compartments(Soma).voltage + dV_soma;
-            neurons(neuron).compartments(AIS ).voltage = neurons(neuron).compartments(AIS ).voltage + dV_axon;
+%             dV_soma = total_soma_current / neurons(neuron).compartments(Soma).C * dt;
+%             dV_axon = total_AIS_current  / neurons(neuron).compartments(AIS ).C * dt;
+%             
+%             neurons(neuron).compartments(Soma).voltage = neurons(neuron).compartments(Soma).voltage + dV_soma;
+%             neurons(neuron).compartments(AIS ).voltage = neurons(neuron).compartments(AIS ).voltage + dV_axon;
+
+    
+            current_sum     = zeros(1, num_compartments); 
+            conductance_sum = zeros(1, num_compartments);
+            
+            for channel=1:2
+                current_sum(AIS)      = current_sum(AIS)      + g_channels(neuron, channel)* E_all(channel);
+                conductance_sum(AIS)  = conductance_sum(AIS)  + g_channels(neuron, channel);
+            end
+            conductance_sum(AIS)  = conductance_sum(AIS)  + g_leaks(neuron, AIS);
+            current_sum(AIS) = current_sum(AIS) + g_leaks(neuron, AIS)*E_leak(neuron, AIS);
+            
+            for channel=3:num_channels
+                current_sum(Soma)     = current_sum(Soma)     + g_channels(neuron, channel)* E_all(channel);
+                conductance_sum(Soma) = conductance_sum(Soma) + g_channels(neuron, channel);
+            end
+            conductance_sum(Soma)  = conductance_sum(Soma)  + g_leaks(neuron, Soma);
+            current_sum(Soma) = current_sum(Soma) + g_leaks(neuron, Soma)*E_leak(neuron, Soma) + I_inj(neuron);
+            
+%             current_sum
+%             conductance_sum
+
+            for compartment = 1:num_compartments
+                V = neurons(neuron).compartments(compartment).voltage;
+                V_inf  =  current_sum(compartment)/conductance_sum(compartment);   % Weighted sum of reversal potentials.
+                tau_V  =  neurons(neuron).compartments(compartment).C/(conductance_sum(compartment) + g_leaks(neuron, compartment));   % Membrane time constant.
+                neurons(neuron).compartments(compartment).voltage      =  V_inf + (V-V_inf)*exp(-dt/tau_V);
+            end
             
             V_hist(neuron, Soma, time_step) = neurons(neuron).compartments(Soma).voltage;
             V_hist(neuron, AIS,  time_step) = neurons(neuron).compartments(AIS ).voltage;
             
-            soma_voltage = neurons(neuron).compartments(Soma).voltage
-            AIS_voltage  = neurons(neuron).compartments(AIS ).voltage
+            soma_voltage = neurons(neuron).compartments(Soma).voltage;
+            AIS_voltage  = neurons(neuron).compartments(AIS ).voltage;
             
             if (soma_voltage == Inf || AIS_voltage == Inf)
                 disp ('Infinite voltage. Stopping.')
@@ -301,11 +341,13 @@ function model()
     
     figure
     hold on
-        plot(squeeze(V_hist(AB,Soma,:)),'r')
-        plot(squeeze(V_hist(AB,AIS, :)),'g')
-        plot(squeeze(V_hist(PD,Soma,:)),'b')
-        plot(squeeze(V_hist(PD,AIS, :)),'c')
+        plot( dt:dt:sim_length, squeeze(V_hist(AB,Soma,:))*1000, 'r')
+        plot( dt:dt:sim_length, squeeze(V_hist(AB,AIS, :))*1000, 'g')
+        plot( dt:dt:sim_length, squeeze(V_hist(PD,Soma,:))*1000, 'b')
+        plot(  dt:dt:sim_length,squeeze(V_hist(PD,AIS, :))*1000, 'c')
         legend('AB Soma','AB AIS','PD Soma','PD AIS')
+        xlabel('Time (ms)')
+        ylabel('Membrane potential (mV)')
     hold off
     
 end % End function
@@ -317,7 +359,10 @@ end % End function
 
 function [m, h] = get_channel_state(neuron, channel, V, Ca, old_m, old_h, dt)
     if neuron == 1, neuron_type = 1; else neuron_type = 2; end
+    
+    V = V*1000; % Convert voltage from V to mV for use in functions table. (Elsewhere voltage is always in Volts.)
 
+    % Channel dynamics functions table.
     switch channel
         case 1 % I_Na (Axon initial segment)
             m_inf = sigmoid(-1, 24.7, 5.29, V);
@@ -389,6 +434,7 @@ function [m, h] = get_channel_state(neuron, channel, V, Ca, old_m, old_h, dt)
             
         otherwise
             STOP
+                        
     end
     % Integrate to find m and h at next time step.
     m = m_inf + (old_m - m_inf)*exp(-dt/tau_m);       %inf + (curr - inf)*exp(-dt/tau); 
@@ -399,17 +445,8 @@ function [m, h] = get_channel_state(neuron, channel, V, Ca, old_m, old_h, dt)
         m = old_m + dm;
         h = old_h + dh;
     end
-    if (m < 0 || m > 1 ), disp ('m out of range. Stopping.')
-        m
-        old_m
-        m_inf
-        tau_m
-        STOP
-    end
-    if (h < 0 || h > 1 ), disp ('h out of range. Stopping.')
-        h
-        STOP
-    end
+    if (m < 0 || m > 1 ), disp ('m out of range. Stopping.'); STOP; end
+    if (h < 0 || h > 1 ), disp ('h out of range. Stopping.'); STOP; end
     
 end
 
@@ -419,5 +456,5 @@ function [answer] = sigmoid(a,b,c, V)
 end
 
 function[tau] = tau_sigmoid(a, b, c, d, e, V)
-        tau = a + b/(1+exp(c*(V+d)/e));
+        tau = (a + b/(1+exp(c*(V+d)/e)))*10^-3;
 end
