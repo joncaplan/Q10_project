@@ -1,11 +1,13 @@
 % This model is based on Soto-Trevino et all 2005 and adds Q10's.
+% This branch created to test effect of different temperatures and
+% timesteps on the soma spiking. (12/30/2010)
 
 % TODO
 %   Add Q10s
 %   Add RK4 integration
 
 
-function model()
+function test_model3()
     tic
     AB = 1; % Enumerate cell types.
     PD = 2;
@@ -15,7 +17,7 @@ function model()
     % Model parameters %
     dt                  = 0.05*10^-3;  % [s] Time step
 %    I_inj               = [0 0];       % [Amp] Current injection [AB_soma PD_soma]
-    sim_length          = 1;         % [s] Simulation length
+    sim_length          = 2;         % [s] Simulation length
     num_neurons         = 2;           % Number of neurons
     num_channels        = 10;          % Number of ion channel types.
     num_compartments    = 2;           % Number of compartments per neuron. Compartment 1 is soma. Compartment 2 is spike initiation zone.
@@ -86,7 +88,7 @@ function model()
                    -55   -55  ] * 10^-3;   % PD
     
     % Starting conditions
-    starting_voltage = -70*10^-3; % [V] 
+    starting_voltage = +20*10^-3; % [V] 
     for neuron = 1:num_neurons
         for compartment = 1:num_compartments 
             neurons(neuron).compartments(compartment).voltage = starting_voltage; 
@@ -112,7 +114,7 @@ function model()
     tic
     for sim_time = dt:dt:sim_length
 
-%        disp('xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx')
+        disp('xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx')
 
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         % Find channel activation and inactivations  %

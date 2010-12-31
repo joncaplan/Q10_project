@@ -2,7 +2,6 @@
 
 % TODO
 %   Add Q10s
-%   Check signs on all currents - DONE
 %   Add RK4 integration
 
 
@@ -14,9 +13,9 @@ function model()
     AIS  = 2; % (Axon initial segment.)
     
     % Model parameters %
-    dt                  = 0.01*10^-3;  % [s] Time step
+    dt                  = 0.05*10^-3;  % [s] Time step
 %    I_inj               = [0 0];       % [Amp] Current injection [AB_soma PD_soma]
-    sim_length          = 1.0;         % [s] Simulation length
+    sim_length          = 1;         % [s] Simulation length
     num_neurons         = 2;           % Number of neurons
     num_channels        = 10;          % Number of ion channel types.
     num_compartments    = 2;           % Number of compartments per neuron. Compartment 1 is soma. Compartment 2 is spike initiation zone.
@@ -36,7 +35,7 @@ function model()
     
     % Constants for Ca++ dynamics
     R = 8.31447215;  % [J/mol/K] Ideal gas constant
-    T = 273.15 + 10; % [Kelvin]  Temperature (Soto-trevino's animals are tested at 18C. Bechholtz et al use 10C.)
+    T = 273.15 + 10; % [Kelvin]  Temperature (Soto-trevino's animals are tested at 18C. Buchholtz et al 1992 use 10C.)
     z = +2;          % Charge of Ca++.
     F = 96485.3399;  % [C/mol] Faraday's constant
     Ca_out             = 13000*10^-6; % [M]
@@ -87,7 +86,7 @@ function model()
                    -55   -55  ] * 10^-3;   % PD
     
     % Starting conditions
-    starting_voltage = +20*10^-3; % [V] 
+    starting_voltage = -70*10^-3; % [V] 
     for neuron = 1:num_neurons
         for compartment = 1:num_compartments 
             neurons(neuron).compartments(compartment).voltage = starting_voltage; 
@@ -113,7 +112,7 @@ function model()
     tic
     for sim_time = dt:dt:sim_length
 
-        disp('xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx')
+%        disp('xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx')
 
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         % Find channel activation and inactivations  %
@@ -275,7 +274,9 @@ function model()
             disp(num2str(sim_time))
         end
         time_step = time_step+1;
-        disp(num2str(time_step))
+        if (time_step/100 == floor(time_step/100))
+            disp(num2str(time_step))
+        end
     end % End main loop
     toc
     
@@ -289,6 +290,7 @@ function model()
         plot( (dt:dt:sim_length)*1000, squeeze(V_hist(AB,AIS, :))*1000, 'g')
         plot( (dt:dt:sim_length)*1000, squeeze(V_hist(PD,Soma,:))*1000, 'b')
         plot( (dt:dt:sim_length)*1000, squeeze(V_hist(PD,AIS, :))*1000, 'c')
+        title(strcat('Membrane potential (T=', num2str(T-273.15),'C dt=',num2str(dt*1000),' ms)' ))
         legend('AB Soma','AB AIS','PD Soma','PD AIS')
         xlabel('Time (ms)')
         ylabel('Membrane potential (mV)')
@@ -313,9 +315,9 @@ function model()
         end
         
         if neuron==1
-            title('AB soma currents')
+            title(strcat('AB soma currents (T=', num2str(T-273.15),'C dt=',num2str(dt*1000),' ms)' ))
         else
-            title('PD soma currents')
+            title(strcat('PD soma currents (T=', num2str(T-273.15),'C dt=',num2str(dt*1000),' ms)' ))
         end
     hold off
     end
@@ -393,7 +395,7 @@ function [m, h] = get_channel_state(neuron, channel, V, Ca, old_m, old_h, dt)
             
         case proc % I_proc
             m_inf = sigmoid( -1, 12, 3.05,   V);
-            tau_m = 0.5*10^-3;
+            tau_m = 0.5*10^-3; %%%%%%%%%%%%%%%%% FIX:  Why is this returning answer in seconds where all other taus return answers in ms? Which one is wrong?
             
         otherwise
             STOP
