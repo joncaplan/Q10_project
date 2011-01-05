@@ -14,7 +14,7 @@ function model()
     
     % Model parameters %
     dt                  = 0.05*10^-3;  % [s] Time step
-%    I_inj               = [0 0];       % [Amp] Current injection [AB_soma PD_soma]
+    I_inj               = [0 10000*10^-9];       % [Amp] Current injection [AB_soma PD_soma]
     sim_length          = 1;         % [s] Simulation length
     num_neurons         = 2;           % Number of neurons
     num_channels        = 10;          % Number of ion channel types.
@@ -35,7 +35,7 @@ function model()
     
     % Constants for Ca++ dynamics
     R = 8.31447215;  % [J/mol/K] Ideal gas constant
-    T = 273.15 + 10; % [Kelvin]  Temperature (Soto-trevino's animals are tested at 18C. Buchholtz et al 1992 use 10C.)
+    T = 273.15 + 18; % [Kelvin]  Temperature (Soto-trevino's animals are tested at 18C. Buchholtz et al 1992 use 10C.)
     z = +2;          % Charge of Ca++.
     F = 96485.3399;  % [C/mol] Faraday's constant
     Ca_out             = 13000*10^-6; % [M]
@@ -86,7 +86,7 @@ function model()
                    -55   -55  ] * 10^-3;   % PD
     
     % Starting conditions
-    starting_voltage = -70*10^-3; % [V] 
+    starting_voltage = +0*10^-3; % [V] 
     for neuron = 1:num_neurons
         for compartment = 1:num_compartments 
             neurons(neuron).compartments(compartment).voltage = starting_voltage; 
@@ -100,8 +100,12 @@ function model()
         
 
     % History variables
-    V_hist = zeros(num_neurons, num_compartments, ceil(sim_length/dt));
-    %I_hist = zeros(num_neurons, num_channels+1,     ceil(sim_length/dt)); % +1 is for leak channel.
+    V_hist = zeros(num_neurons, num_compartments,   ceil(sim_length/dt));
+    I_hist = zeros(num_neurons, num_channels+1,     ceil(sim_length/dt)); % +1 is for leak channel.
+    m_hist = zeros(num_neurons, num_channels+1,     ceil(sim_length/dt));
+    h_hist = zeros(num_neurons, num_channels+1,     ceil(sim_length/dt));
+    g_hist = zeros(num_neurons, num_channels+1,     ceil(sim_length/dt));
+    
     global Na K_AIS CaT CaS nap H K_soma KCa A proc Leak_AIS Leak_soma
     Na=1; K_AIS=2; CaT=3; CaS=4; nap=5; H=6; K_soma=7; KCa=8; A=9; proc=10;Leak_AIS=11;Leak_soma=12; % Enumeration of all the currents.
     time_step = 1;
@@ -111,6 +115,12 @@ function model()
     %%%%%%%%%%%%%%%%%
     tic
     for sim_time = dt:dt:sim_length
+        
+        if sim_time >= 389.59*10^-3 && sim_time <= 389.61*10^-3
+            disp('Entering trace mode...')
+            sim_time
+            time_step
+        end
 
 %        disp('xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx')
 
@@ -123,6 +133,11 @@ function model()
                 if channel <= 2, compartment = AIS; else compartment = Soma; end % First two channels are in axon initial segment.
                 V = neurons(neuron).compartments(compartment).voltage; % [V]
                 [m h] = get_channel_state(neuron, channel, V, Ca, neurons(neuron).channels(channel).m, neurons(neuron).channels(channel).h, dt);
+                if (m <0 || m > 1.01 || h < 0 || h > 1.01 )
+                    disp('Activation or inactivation out of range. '), m, h, STOP
+                end
+                m_hist(neuron, channel, time_step) = m;
+                h_hist(neuron, channel, time_step) = h;
                 neurons(neuron).channels(channel).m = m;
                 neurons(neuron).channels(channel).h = h;
             end
@@ -149,10 +164,11 @@ function model()
                 b = b_exponents(channel);
                 
                 g_channels(neuron, channel) = g_max * m^a * h^b;
-                g_channel=g_channels(neuron, channel);
+                g_channel = g_channels(neuron, channel);
+                g_hist(neuron, channel, time_step) = g_channel;
                 if ((g_channel ~= abs(g_channel) && -g_channel ~= abs(g_channel)) || (g_channel < 0) ) % Testing for imaginary or negative component.
                     disp ('Imaginary or negative conductance. Stopping.'); STOP
-                end                
+                end
             end
         end
         
@@ -203,8 +219,8 @@ function model()
                 I_hist(neuron, Leak_soma, time_step) = leak_current;
                 if compartment == Soma
                     conductance_sum(Soma) = conductance_sum(Soma) + g_leaks(neuron, Soma); % TESTING %%%%%%%%%%%%+ neurons(neuron).g_axial + g_gap;
-                    I_weighted_sum(Soma)  = I_weighted_sum(Soma)  + I_leak_weight; % TESTING %%%%%%%%%%%% + axial_current + coupling_current*coupling_current_direction + I_inj(compartment);
-%                     current_sum(Soma)     = current_sum(Soma)     + leak_current  + axial_current + coupling_current*coupling_current_direction + I_inj(compartment);
+                    I_weighted_sum(Soma)  = I_weighted_sum(Soma)  + I_leak_weight + I_inj(neuron); % TESTING %%%%%%%%%%%% + axial_current + coupling_current*coupling_current_direction;
+%                     current_sum(Soma)     = current_sum(Soma)     + leak_current  + axial_current + coupling_current*coupling_current_direction + I_inj(neuron);
                 else
                     if compartment ~= AIS, STOP; end
                     conductance_sum(AIS)  = conductance_sum(AIS)  + g_leaks(neuron, AIS); %%%%%%%%% TESTING + neurons(neuron).g_axial;
@@ -260,7 +276,8 @@ function model()
                     dCa = (-F_Ca * I_Ca - Ca + Ca_steady_state) / tau_Ca * dt;
                     neurons(neuron).Ca = neurons(neuron).Ca + dCa;
                 case 'ExpEuler'
-                    neurons(neuron).Ca = Ca_steady_state + (Ca - Ca_steady_state)*exp(-dt/tau_Ca);  %inf + (curr - inf)*exp(-dt/tau); 
+                    Ca_steady_state_adj = Ca_steady_state + I_Ca*F_Ca; % Adjusted steady state [Ca++] includes Ca++ current.
+                    neurons(neuron).Ca = Ca_steady_state_adj + (Ca - Ca_steady_state_adj)*exp(-dt/tau_Ca);  %inf + (curr - inf)*exp(-dt/tau); 
                 otherwise
                     STOP
             end
@@ -284,6 +301,7 @@ function model()
     % Draw Figures  %
     %%%%%%%%%%%%%%%%%
     
+    % Plot voltage history
     figure
     hold on
         plot( (dt:dt:sim_length)*1000, squeeze(V_hist(AB,Soma,:))*1000, 'r')
@@ -296,18 +314,19 @@ function model()
         ylabel('Membrane potential (mV)')
     hold off
     
+    % Plot current hitory
     for neuron = 1:num_neurons
     figure
     hold on
-        plot( (dt:dt:sim_length)*1000, squeeze(I_hist(neuron,       CaT,:))*1000, 'r')
-        plot( (dt:dt:sim_length)*1000, squeeze(I_hist(neuron,       CaS,:))*1000, 'g')
-        plot( (dt:dt:sim_length)*1000, squeeze(I_hist(neuron,       nap,:))*1000, 'b')
-        plot( (dt:dt:sim_length)*1000, squeeze(I_hist(neuron,         H,:))*1000, 'c')
-        plot( (dt:dt:sim_length)*1000, squeeze(I_hist(neuron,    K_soma,:))*1000, 'y')
-        plot( (dt:dt:sim_length)*1000, squeeze(I_hist(neuron,       KCa,:))*1000, 'm')
-        plot( (dt:dt:sim_length)*1000, squeeze(I_hist(neuron,         A,:))*1000, 'k')
-        if neuron==AB, plot( (dt:dt:sim_length)*1000, squeeze(I_hist(neuron,      proc,:))*1000, 'r.'), end % No proctolin current in PD.
-        plot( (dt:dt:sim_length)*1000, squeeze(I_hist(neuron, Leak_soma,:))*1000, 'g.')
+        plot( (dt:dt:sim_length)*1000, squeeze(I_hist(neuron,       CaT,:))*10^9, 'r')
+        plot( (dt:dt:sim_length)*1000, squeeze(I_hist(neuron,       CaS,:))*10^9, 'g')
+        plot( (dt:dt:sim_length)*1000, squeeze(I_hist(neuron,       nap,:))*10^9, 'b')
+        plot( (dt:dt:sim_length)*1000, squeeze(I_hist(neuron,         H,:))*10^9, 'c')
+        plot( (dt:dt:sim_length)*1000, squeeze(I_hist(neuron,    K_soma,:))*10^9, 'y')
+        plot( (dt:dt:sim_length)*1000, squeeze(I_hist(neuron,       KCa,:))*10^9, 'm')
+        plot( (dt:dt:sim_length)*1000, squeeze(I_hist(neuron,         A,:))*10^9, 'k')
+        if neuron==AB, plot( (dt:dt:sim_length)*1000, squeeze(I_hist(neuron,      proc,:))*10^9, 'r.'), end % No proctolin current in PD.
+        plot( (dt:dt:sim_length)*1000, squeeze(I_hist(neuron, Leak_soma,:))*10^9, 'g.')
         if neuron== AB
             legend('Ca_T','Ca_S','nap','H','K soma','K_C_a','A','proctolin', 'Leak soma')
         else
@@ -319,7 +338,34 @@ function model()
         else
             title(strcat('PD soma currents (T=', num2str(T-273.15),'C dt=',num2str(dt*1000),' ms)' ))
         end
+        xlabel('Time (ms)')
+        ylabel('Current (nA)')
     hold off
+    
+    % Plot activation histiry
+    figure
+    hold on
+        plot( (dt:dt:sim_length)*1000, squeeze(m_hist(neuron,       CaT,:)), 'r')
+        plot( (dt:dt:sim_length)*1000, squeeze(m_hist(neuron,       CaS,:)), 'g')
+        plot( (dt:dt:sim_length)*1000, squeeze(m_hist(neuron,       nap,:)), 'b')
+        plot( (dt:dt:sim_length)*1000, squeeze(m_hist(neuron,         H,:)), 'c')
+        plot( (dt:dt:sim_length)*1000, squeeze(m_hist(neuron,    K_soma,:)), 'y')
+        plot( (dt:dt:sim_length)*1000, squeeze(m_hist(neuron,       KCa,:)), 'm')
+        plot( (dt:dt:sim_length)*1000, squeeze(m_hist(neuron,         A,:)), 'k')
+        if neuron==AB, plot( (dt:dt:sim_length)*1000, squeeze(m_hist(neuron,      proc,:)), 'r.'), end % No proctolin current in PD.
+        if neuron== AB
+            legend('Ca_T','Ca_S','nap','H','K soma','K_C_a','A','proctolin')
+        else
+            legend('Ca_T','Ca_S','nap','H','K soma','K_C_a','A')
+        end
+        
+        if neuron==1
+            title(strcat('AB soma activation (T=', num2str(T-273.15),'C dt=',num2str(dt*1000),' ms)' ))
+        else
+            title(strcat('PD soma activation (T=', num2str(T-273.15),'C dt=',num2str(dt*1000),' ms)' ))
+        end
+    hold off
+    
     end
     
 end % End function
@@ -330,7 +376,6 @@ end % End function
 %%%%%%%%%%%%%%
 
 function [m, h] = get_channel_state(neuron, channel, V, Ca, old_m, old_h, dt)
-    if neuron == 1, neuron_type = 1; else neuron_type = 2; end
     
     V  = V  * 1000; % Convert voltage from V to mV for use in functions table. (Elsewhere voltage is always in Volts.)
     Ca = Ca * 10^6; % Convert intracellular [Ca++] from Mol to μM. (Elsewhere [Ca++] is always in Mol.)
@@ -349,7 +394,7 @@ function [m, h] = get_channel_state(neuron, channel, V, Ca, old_m, old_h, dt)
             m_inf = sigmoid(-1, 25, 7.2, V);
             h_inf = sigmoid(+1, 36, 7  , V);
             tau_m = tau_sigmoid(55, -49.5, -1, 58, 17, V);
-            switch neuron_type
+            switch neuron
                 case 1 % AB
                     tau_h = tau_sigmoid(87.5,  -75, -1, 50, 16.9, V);
                 case 2 % PD
@@ -377,7 +422,7 @@ function [m, h] = get_channel_state(neuron, channel, V, Ca, old_m, old_h, dt)
             tau_m = tau_sigmoid( 7.2, -6.4, -1, 28.3, 19.2, V);
             
         case KCa % I_KCa
-            switch neuron_type
+            switch neuron
                 case 1
                     m_inf = Ca/(Ca + 30) * sigmoid(-1, 51, 4, V);
                 case 2
@@ -395,7 +440,7 @@ function [m, h] = get_channel_state(neuron, channel, V, Ca, old_m, old_h, dt)
             
         case proc % I_proc
             m_inf = sigmoid( -1, 12, 3.05,   V);
-            tau_m = 0.5*10^-3; %%%%%%%%%%%%%%%%% FIX:  Why is this returning answer in seconds where all other taus return answers in ms? Which one is wrong?
+            tau_m = 0.5*10^-3; %[seconds]
             
         otherwise
             STOP
@@ -413,12 +458,12 @@ function [m, h] = get_channel_state(neuron, channel, V, Ca, old_m, old_h, dt)
         otherwise
             STOP
     end
-    if (false)
-        dm = (m_inf - old_m)/tau_m * dt;  % OLD CODE: Forward Euler.
-        dh = (h_inf - old_h)/tau_h * dt;
-        m = old_m + dm;
-        h = old_h + dh;
-    end
+%     if (false)
+%         dm = (m_inf - old_m)/tau_m * dt;  % OLD CODE: Forward Euler.
+%         dh = (h_inf - old_h)/tau_h * dt;
+%         m = old_m + dm;
+%         h = old_h + dh;
+%     end
     if (m < 0 || m > 1 ), disp ('m out of range. Stopping.'); STOP; end
     if (h < 0 || h > 1 ), disp ('h out of range. Stopping.'); STOP; end
     
@@ -430,5 +475,5 @@ function [answer] = sigmoid(a,b,c, V)
 end
 
 function[tau] = tau_sigmoid(a, b, c, d, e, V)
-        tau = (a + b/(1+exp(c*(V+d)/e)))*10^-3;
+        tau = (a + b/(1+exp(c*(V+d)/e)))*10^-3; %[seconds]
 end

@@ -102,7 +102,11 @@ function plot_m_h
         set(gca,'XTick', 1:20/voltage_step:(max_voltage-min_voltage)/voltage_step +1)
         voltages = ['-80';'-60';'-40';'-20';'  0';' 20'];
         set(gca,'XTickLabel',voltages)
-    
+        if neuron == 1 
+            title('AB');
+        else
+            title('PD')
+        end
     end
 end
 
