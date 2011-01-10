@@ -99,8 +99,9 @@ function plot_m_h
         %legend('Na',  'K_A_I_S', 'CaT', 'CaS', 'nap', 'H', 'K_s_o_m_a')
         legend('Na',  'K_A_I_S', 'CaT', 'CaS', 'nap', 'H', 'K_s_o_m_a', 'KCa', 'A', 'proc')
 
-        set(gca,'XTick', 1:20/voltage_step:(max_voltage-min_voltage)/voltage_step +1)
-        voltages = ['-80';'-60';'-40';'-20';'  0';' 20'];
+        set(gca,'XTick', 1:10/voltage_step:(max_voltage-min_voltage)/voltage_step +1)
+        voltages = ['-80';'-70';'-60';'-50';'-40';'-30';'-20';'-10';'  0';' 10';' 20'];        
+        %voltages = ['-80';'-60';'-40';'-20';'  0';' 20'];
         set(gca,'XTickLabel',voltages)
         if neuron == 1 
             title('AB');
