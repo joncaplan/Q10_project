@@ -14,8 +14,8 @@ function model()
     
     % Model parameters %
     dt                  = 0.1*10^-3;  % [s] Time step
-    I_inj               = [0 0*10000*10^-9];       % [Amp] Current injection [AB_soma PD_soma]
-    sim_length          = 4;         % [s] Simulation length
+    I_inj               = [0 0]*10^-9;       % [Amp] Current injection [AB_soma PD_soma]
+    sim_length          = 2;         % [s] Simulation length
     num_neurons         = 2;           % Number of neurons
     num_channels        = 10;          % Number of ion channel types. (Excludes leak.)
     num_compartments    = 2;           % Number of compartments per neuron. Compartment 1 is soma. Compartment 2 is spike initiation zone.
@@ -25,8 +25,8 @@ function model()
 
 %     % Testing with no connections between compartments.
      g_gap               = 0;     % [S] Conductance between the soma of the two neurons.
-%      neurons(AB).g_axial = 0;     % [S] Conductance between the two compartments of the AB neuron.
-%      neurons(PD).g_axial = 0;     % [S] Conductance between the two compartments of the PD neuron.    
+      neurons(AB).g_axial = 0;     % [S] Conductance between the two compartments of the AB neuron.
+      neurons(PD).g_axial = 0;     % [S] Conductance between the two compartments of the PD neuron.    
     
     neurons(AB).compartments(AIS).C  =  1.5*10^-9; % [F] Capacitance of each compartment.
     neurons(AB).compartments(Soma).C =  9.0*10^-9; % [F]
@@ -35,7 +35,7 @@ function model()
     
     % Constants for Ca++ dynamics
     R = 8.31447215;  % [J/mol/K] Ideal gas constant
-    T = 273.15 + 10; % [Kelvin]  Temperature (Soto-trevino's animals are tested at 18C. Buchholtz et al 1992 use 10C.)
+    T = 273.15 + 18; % [Kelvin]  Temperature (Soto-Trevino's animals are tested at 18C. Buchholtz et al 1992 use 10C.)
     z = +2;          % Charge of Ca++.
     F = 96485.3399;  % [C/mol] Faraday's constant
     Ca_out             = 13000*10^-6; % [M]
@@ -63,6 +63,14 @@ function model()
     g_max_all = [ 300  52.5         55.2  9   2.7   0.054  1890    6000    200    570; ...       % AB % [S] Conductance values for all (non-leak) channels.
                  1100  150          22.5  60  4.38  0.219  1576.8  251.85  39.42  0   ]*10^-6;   % PD
 
+    % Farzan's maximal conductances ... 
+    g_max_all = [25.5556   3.88889   3.1  0.5 0.1   0.002  70      300     0.8    0; ...
+                 55.479528 7.39727   
+
+
+        ]*10^-6;
+             
+             
 %     % No descending inputs
 %     g_max_all = [ 300  52.5         55.2  9   2.7   0.054  1890    6000    200    0;   ...       % AB % [S] Conductance values for all (non-leak) channels.
 %                  1100  150            10  54  4.38  0.219  1576.8  251.85  39.42  0   ]*10^-6;   % PD
@@ -108,7 +116,6 @@ function model()
             neurons(neuron).channels(channel).h = 0;
         end
     end
-    %neurons(AB).channels(6).m = 1; %%%%%%%%%% TESTING Starting H high
 
     % History variables
     V_hist = zeros(num_neurons, num_compartments,   ceil(sim_length/dt));
@@ -116,7 +123,7 @@ function model()
     m_hist = zeros(num_neurons, num_channels,       ceil(sim_length/dt));
     h_hist = zeros(num_neurons, num_channels,       ceil(sim_length/dt));
     g_hist = zeros(num_neurons, num_channels,       ceil(sim_length/dt));
-    I_sum_hist = zeros(num_neurons,  num_compartments, ceil(sim_length/dt));
+    %I_sum_hist = zeros(num_neurons,  num_compartments, ceil(sim_length/dt));
     
     global Na K_AIS CaT CaS nap H K_soma KCa A proc Leak_AIS Leak_soma
     Na=1; K_AIS=2; CaT=3; CaS=4; nap=5; H=6; K_soma=7; KCa=8; A=9; proc=10;Leak_AIS=11;Leak_soma=12; Axial=13; Gap=14; % Enumeration of all the currents.
@@ -157,7 +164,8 @@ function model()
         for neuron = 1:num_neurons
             % Find Ca reversal potential via Nernst equation.
             Ca_in = neurons(neuron).Ca;
-            E_Ca = R*T/(z*F)*log(Ca_out/Ca_in);
+            E_Ca = R*T/(z*F)*log(Ca_out/Ca_in); % [Volts]
+            %E_Ca = 0.110; % [Volts] %%%%%%%%%%%%%% TESTING: Hard coded E_Ca of 110 mV may have been used in Farzan's model. (See forward email from Farzan via Gabrielle.)
             E_all(neuron, 3) = E_Ca; % Set reversal values for Ca++. 
             E_all(neuron, 4) = E_Ca;
             
@@ -177,7 +185,6 @@ function model()
                 end
             end
         end
-        
 
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         % Find new voltage of each compartment %      
@@ -203,6 +210,7 @@ function model()
             for compartment = 1:num_compartments
                 V = neurons(neuron).compartments(compartment).voltage;
                 if compartment == AIS, channels = 1:2; else channels = 3:num_channels; end
+                if compartment == AIS, I_axial_direction = 1; else I_axial_direction = -1; end % Axial current direction is positive for current flowing into AIS.
                 for channel = channels % Iterate through the set of channels.
 
                     channel_current = g_channels(neuron, channel)* (E_all(neuron, channel) -V);
@@ -216,21 +224,25 @@ function model()
                     conductance_sum(compartment) = conductance_sum(compartment) + g_channels(neuron, channel);
                 end
 
-                I_leak_weight  =  g_leaks(neuron, compartment)*(E_leak(neuron, compartment) ) ;
+                I_leak_weight  =  g_leaks(neuron, compartment)*(E_leak(neuron, compartment)   ) ;
                 leak_current   =  g_leaks(neuron, compartment)*(E_leak(neuron, compartment) -V) ;
                 if compartment == Soma
                     I_hist(neuron, Leak_soma, time_step) = leak_current;
+                    if neuron == AB, other_neuron = PD; else other_neuron = AB; end
+                    I_axial_weight = neurons(neuron).g_axial*neurons(neuron).compartments(AIS).voltage;
+                    I_gap_weight   = g_gap*neurons(other_neuron).compartments(Soma).voltage;
                     conductance_sum(Soma) = conductance_sum(Soma) + g_leaks(neuron, Soma) + neurons(neuron).g_axial + g_gap;
-                    I_weighted_sum(Soma)  = I_weighted_sum(Soma)  + I_leak_weight + I_inj(neuron) + axial_current + coupling_current*coupling_current_direction;
-                     current_sum(Soma)     = current_sum(Soma)     + leak_current + axial_current + coupling_current*coupling_current_direction + I_inj(neuron);
-                     I_sum_hist(neuron, compartment, time_step) = current_sum(compartment); % Checking current sum calculations
+                    I_weighted_sum(Soma)  = I_weighted_sum(Soma)  + I_leak_weight + I_axial_weight + I_gap_weight + I_inj(neuron);
+                    current_sum(Soma)     = current_sum(Soma)     + leak_current + axial_current*I_axial_direction + coupling_current*coupling_current_direction + I_inj(neuron);
+                    %I_sum_hist(neuron, compartment, time_step) = current_sum(compartment); % Checking current sum calculations
                 else
                     if compartment ~= AIS, STOP; end
                     I_hist(neuron, Leak_AIS, time_step) = leak_current;
+                    I_axial_weight = neurons(neuron).g_axial*neurons(neuron).compartments(Soma).voltage;
                     conductance_sum(AIS)  = conductance_sum(AIS)  + g_leaks(neuron, AIS) + neurons(neuron).g_axial;
-                    I_weighted_sum(AIS)   = I_weighted_sum(AIS)   + I_leak_weight + axial_current;
-                     current_sum(AIS)      = current_sum(AIS)      + leak_current + axial_current;
-                     I_sum_hist(neuron, compartment, time_step) = current_sum(compartment); % Checking current sum calculations
+                    I_weighted_sum(AIS)   = I_weighted_sum(AIS)   + I_leak_weight + I_axial_weight;
+                    current_sum(AIS)      = current_sum(AIS)      + leak_current  + axial_current*I_axial_direction;
+                    %I_sum_hist(neuron, compartment, time_step) = current_sum(compartment); % Checking current sum calculations
                 end
                 
             end
@@ -238,10 +250,10 @@ function model()
             % Now calculate new voltage from currents.
             for compartment = 1:num_compartments
                 V = neurons(neuron).compartments(compartment).voltage;
-                V_inf  =  I_weighted_sum(compartment)/conductance_sum(compartment);   % Weighted sum of reversal potentials.
                 integration_method = 'exp_Euler';
                 switch integration_method
                     case 'exp_Euler'
+                        V_inf  =  I_weighted_sum(compartment)/conductance_sum(compartment);   % Steady state voltage.
                         tau_V  =  neurons(neuron).compartments(compartment).C/(conductance_sum(compartment));   % Membrane time constant.
                         neurons(neuron).compartments(compartment).voltage      =  V_inf + (V-V_inf)*exp(-dt/tau_V);
                     case 'forward_Euler'
@@ -341,95 +353,100 @@ function model()
         plot( (dt:dt:sim_length)*1000, squeeze(I_hist(neuron,     Axial,:))*10^9, 'k*')
         %plot( (dt:dt:sim_length)*1000, squeeze(I_hist(neuron,       Gap,:))*10^9, 'c.')
         if neuron== AB
-            legend('Ca_T','Ca_S','nap','H','K_S_o_m_a','K_C_a','A','proctolin', 'Leak_S_o_m_a', 'Na_A_I_S', 'K_A_I_S', 'Leak_A_I_S', 'Gap')
+            legend('Ca_T','Ca_S','nap','H','K_S_o_m_a','K_C_a','A','proctolin', 'Leak_S_o_m_a', 'Na_A_I_S', 'K_A_I_S', 'Leak_A_I_S', 'Axial (Soma -> AIS)')
         else
-            legend('Ca_T','Ca_S','nap','H','K_S_o_m_a','K_C_a','A',             'Leak_S_o_m_a', 'Na_A_I_S', 'K_A_I_S', 'Leak_A_I_S', 'Gap')
+            legend('Ca_T','Ca_S','nap','H','K_S_o_m_a','K_C_a','A',             'Leak_S_o_m_a', 'Na_A_I_S', 'K_A_I_S', 'Leak_A_I_S', 'Axial (Soma -> AIS)')
         end
         
         if neuron==1
-            title(strcat('AB soma currents (T=', num2str(T-273.15),'C dt=',num2str(dt*1000),' ms)' ))
+            title(strcat('AB currents (T=', num2str(T-273.15),'C dt=',num2str(dt*1000),' ms)' ))
         else
-            title(strcat('PD soma currents (T=', num2str(T-273.15),'C dt=',num2str(dt*1000),' ms)' ))
+            title(strcat('PD currents (T=', num2str(T-273.15),'C dt=',num2str(dt*1000),' ms)' ))
         end
         xlabel('Time (ms)')
         ylabel('Current (nA)')
     hold off
     
 %     disp('Total soma current is:')
-%     current__total = 0;
-%     I_hist_all = 0;
-%     for x=[3:10 12] % Soma currents
-%         current__total = current__total + (I_hist(neuron,x,end));
-%         I_hist_all = I_hist_all + I_hist(neuron,x,:);
-%     end
-%     figure 
-%     plot (squeeze(I_hist_all))
-%     title('I hist soma')
+    current__total = 0;
+    I_hist_all = 0;
+    for x=[3:10 12 Axial] % Soma currents
+      if x==Axial % Axial current is OUT of soma.
+        current__total = current__total - (I_hist(neuron,x,end));
+        I_hist_all = I_hist_all - I_hist(neuron,x,:);
+      else
+        current__total = current__total + (I_hist(neuron,x,end));
+        I_hist_all = I_hist_all + I_hist(neuron,x,:);
+      end
+    end
+    figure 
+    plot (squeeze(I_hist_all))
+    if neuron == AB, title('I hist AB soma'), else title('I hist PD soma'), end
 %     
 %     disp('Total AIS current is:')
-%     current__total = 0;
-%     I_hist_all = 0;
-%     for x=[1:2 11] % AIS currents
-%         current__total = current__total + (I_hist(neuron,x,end));
-%         I_hist_all = I_hist_all + I_hist(neuron,x,:);
-%     end
-%     figure 
-%     plot (squeeze(I_hist_all))
-%     title('I hist AIS')    
+    current__total = 0;
+    I_hist_all = 0;
+    for x=[Na K_AIS Leak_AIS Axial] % Values are enumerated indices for currents.
+        current__total = current__total + (I_hist(neuron,x,end)); % Just find final value
+        I_hist_all     = I_hist_all     +  I_hist(neuron,x,:);    % Find whole AIS current history.
+    end
+    figure 
+    plot (squeeze(I_hist_all))
+    if neuron == AB, title('I hist AB AIS'), else title('I hist PD AIS'), end
 %     
 %     current__total
 %     figure
-%     plot(squeeze(I_sum_hist(neuron, 1, :)))
-%     title('Soma current sum history')
+%     plot(squeeze(I_sum_hist(neuron, Soma, :)))
+%     if neuron == AB, title('AB Soma current sum history'), else title('PD Soma current sum history'), end
 %     figure
-%     plot(squeeze(I_sum_hist(neuron, 2, :)))
-%     title('AIS current sum history')
+%     plot(squeeze(I_sum_hist(neuron, AIS, :)))
+%     if neuron == AB, title('AB AIS current sum history'), else title('PD AIS current sum history'), end
     
     
-    % Plot activation histiry
-    figure
-    hold on
-        plot( (dt:dt:sim_length)*1000, squeeze(m_hist(neuron,       CaT,:)), 'r')
-        plot( (dt:dt:sim_length)*1000, squeeze(m_hist(neuron,       CaS,:)), 'g')
-        plot( (dt:dt:sim_length)*1000, squeeze(m_hist(neuron,       nap,:)), 'b')
-        plot( (dt:dt:sim_length)*1000, squeeze(m_hist(neuron,         H,:)), 'c')
-        plot( (dt:dt:sim_length)*1000, squeeze(m_hist(neuron,    K_soma,:)), 'y')
-        plot( (dt:dt:sim_length)*1000, squeeze(m_hist(neuron,       KCa,:)), 'm')
-        plot( (dt:dt:sim_length)*1000, squeeze(m_hist(neuron,         A,:)), 'k')
-        if neuron==AB, 
-        plot( (dt:dt:sim_length)*1000, squeeze(m_hist(neuron,      proc,:)), 'r.'), 
-        end % No proctolin current in PD.
-        if neuron== AB
-            legend('Ca_T','Ca_S','nap','H','K soma','K_C_a','A','proctolin')
-        else
-            legend('Ca_T','Ca_S','nap','H','K soma','K_C_a','A')
-        end
-        
-        if neuron==AB
-            title(strcat('AB soma activation (T=', num2str(T-273.15),'C dt=',num2str(dt*1000),' ms)' ))
-        else
-            title(strcat('PD soma activation (T=', num2str(T-273.15),'C dt=',num2str(dt*1000),' ms)' ))
-        end
-    hold off
-    
-    % Plot inactivation history
-    figure
-    hold on
-        plot( (dt:dt:sim_length)*1000, squeeze(h_hist(neuron,       CaT,:)), 'r')
-        plot( (dt:dt:sim_length)*1000, squeeze(h_hist(neuron,       CaS,:)), 'g')
-        plot( (dt:dt:sim_length)*1000, squeeze(h_hist(neuron,       nap,:)), 'b')
-        plot( (dt:dt:sim_length)*1000, squeeze(h_hist(neuron,         H,:)), 'c')
-        plot( (dt:dt:sim_length)*1000, squeeze(h_hist(neuron,    K_soma,:)), 'y')
-        plot( (dt:dt:sim_length)*1000, squeeze(h_hist(neuron,       KCa,:)), 'm')
-        plot( (dt:dt:sim_length)*1000, squeeze(h_hist(neuron,         A,:)), 'k')    
-        plot( (dt:dt:sim_length)*1000, squeeze(h_hist(neuron,      proc,:)), 'r.'), 
-        if neuron==AB
-            title(strcat('AB soma inactivation (T=', num2str(T-273.15),'C dt=',num2str(dt*1000),' ms)' ))
-        else
-            title(strcat('PD soma inactivation (T=', num2str(T-273.15),'C dt=',num2str(dt*1000),' ms)' ))
-        end
-        legend('Ca_T','Ca_S','nap','H','K soma','K_C_a','A','proctolin')
-    hold off
+%     % Plot activation histiry
+%     figure
+%     hold on
+%         plot( (dt:dt:sim_length)*1000, squeeze(m_hist(neuron,       CaT,:)), 'r')
+%         plot( (dt:dt:sim_length)*1000, squeeze(m_hist(neuron,       CaS,:)), 'g')
+%         plot( (dt:dt:sim_length)*1000, squeeze(m_hist(neuron,       nap,:)), 'b')
+%         plot( (dt:dt:sim_length)*1000, squeeze(m_hist(neuron,         H,:)), 'c')
+%         plot( (dt:dt:sim_length)*1000, squeeze(m_hist(neuron,    K_soma,:)), 'y')
+%         plot( (dt:dt:sim_length)*1000, squeeze(m_hist(neuron,       KCa,:)), 'm')
+%         plot( (dt:dt:sim_length)*1000, squeeze(m_hist(neuron,         A,:)), 'k')
+%         if neuron==AB, 
+%         plot( (dt:dt:sim_length)*1000, squeeze(m_hist(neuron,      proc,:)), 'r.'), 
+%         end % No proctolin current in PD.
+%         if neuron== AB
+%             legend('Ca_T','Ca_S','nap','H','K soma','K_C_a','A','proctolin')
+%         else
+%             legend('Ca_T','Ca_S','nap','H','K soma','K_C_a','A')
+%         end
+%         
+%         if neuron==AB
+%             title(strcat('AB soma activation (T=', num2str(T-273.15),'C dt=',num2str(dt*1000),' ms)' ))
+%         else
+%             title(strcat('PD soma activation (T=', num2str(T-273.15),'C dt=',num2str(dt*1000),' ms)' ))
+%         end
+%     hold off
+%     
+%     % Plot inactivation history
+%     figure
+%     hold on
+%         plot( (dt:dt:sim_length)*1000, squeeze(h_hist(neuron,       CaT,:)), 'r')
+%         plot( (dt:dt:sim_length)*1000, squeeze(h_hist(neuron,       CaS,:)), 'g')
+%         plot( (dt:dt:sim_length)*1000, squeeze(h_hist(neuron,       nap,:)), 'b')
+%         plot( (dt:dt:sim_length)*1000, squeeze(h_hist(neuron,         H,:)), 'c')
+%         plot( (dt:dt:sim_length)*1000, squeeze(h_hist(neuron,    K_soma,:)), 'y')
+%         plot( (dt:dt:sim_length)*1000, squeeze(h_hist(neuron,       KCa,:)), 'm')
+%         plot( (dt:dt:sim_length)*1000, squeeze(h_hist(neuron,         A,:)), 'k')    
+%         plot( (dt:dt:sim_length)*1000, squeeze(h_hist(neuron,      proc,:)), 'r.'), 
+%         if neuron==AB
+%             title(strcat('AB soma inactivation (T=', num2str(T-273.15),'C dt=',num2str(dt*1000),' ms)' ))
+%         else
+%             title(strcat('PD soma inactivation (T=', num2str(T-273.15),'C dt=',num2str(dt*1000),' ms)' ))
+%         end
+%         legend('Ca_T','Ca_S','nap','H','K soma','K_C_a','A','proctolin')
+%     hold off
         
     
     end
@@ -519,14 +536,8 @@ function [m, h] = get_channel_state(neuron, channel, V, Ca, old_m, old_h, dt)
     switch channel
         case {K_AIS, CaS, H, K_soma, KCa, proc} % Channels which do not inactivate.
             h = 1;
-%             disp('No inactivation')
-%             channel
-%             h
         case {Na, CaT, nap, A} % Channels which inactivate.
             h = h_inf + (old_h - h_inf)*exp(-dt/tau_h);       %inf + (curr - inf)*exp(-dt/tau); 
-%             disp('Finding inactivation')
-%             channel
-%             h
         otherwise
             STOP
     end
