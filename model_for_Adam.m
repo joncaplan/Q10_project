@@ -1,9 +1,7 @@
-% This model is based on Soto-Trevino et all 2005 and adds Q10's.
+% This model is based on Soto-Trevino et all 2005 
+% Extra crap removed for so Adam can read it and not go crazy.
 
-% TODO
-%   Add Q10s
-
-function model()
+function model_for_Adam()
     tic
     AB = 1; % Enumerate cell types.
     PD = 2;
@@ -61,13 +59,6 @@ function model()
     g_max_all = [ 300  52.5         55.2  9   2.7   0.054  1890    6000    200    570; ...       % AB % [S] Conductance values for all (non-leak) channels.
                  1100  150          22.5  60  4.38  0.219  1576.8  251.85  39.42  0   ]*10^-6;   % PD
 
-
-             
-             
-%     % No descending inputs
-%     g_max_all = [ 300  52.5         55.2  9   2.7   0.054  1890    6000    200    0;   ...       % AB % [S] Conductance values for all (non-leak) channels.
-%                  1100  150            10  54  4.38  0.219  1576.8  251.85  39.42  0   ]*10^-6;   % PD
-
          % Channel  Na  K(AIS)  CaT  CaS  nap  h   K(soma) KCa  A   proc
     a_exponents = [ 3   4       3    3    3    1   4       4    3   1     ; ... % AB
                     3   4       3    3    3    1   4       4    4   1    ];    % PD
@@ -102,7 +93,6 @@ function model()
     m_hist = zeros(num_neurons, num_channels,       ceil(sim_length/dt));
     h_hist = zeros(num_neurons, num_channels,       ceil(sim_length/dt));
     g_hist = zeros(num_neurons, num_channels,       ceil(sim_length/dt));
-    %I_sum_hist = zeros(num_neurons,  num_compartments, ceil(sim_length/dt));
     
     global Na K_AIS CaT CaS nap H K_soma KCa A proc Leak_AIS Leak_soma
     Na=1; K_AIS=2; CaT=3; CaS=4; nap=5; H=6; K_soma=7; KCa=8; A=9; proc=10;Leak_AIS=11;Leak_soma=12; Axial=13; Gap=14; % Enumeration of all the currents.
@@ -142,7 +132,6 @@ function model()
             % Find Ca reversal potential via Nernst equation.
             Ca_in = neurons(neuron).Ca;
             E_Ca = R*T/(z*F)*log(Ca_out/Ca_in); % [Volts]
-            %E_Ca = 0.110; % [Volts] %%%%%%%%%%%%%% TESTING: Hard coded E_Ca of 110 mV may have been used in Farzan's model. (See forward email from Farzan via Gabrielle.)
             E_all(neuron, 3) = E_Ca; % Set reversal values for Ca++. 
             E_all(neuron, 4) = E_Ca;
             
@@ -181,13 +170,11 @@ function model()
             I_hist(neuron,   Gap, time_step) = coupling_current * coupling_current_direction;
     
             I_weighted_sum    = zeros(1, num_compartments); % Sum of single steady state channel currents gives weighted sum of their contributions at steady state.
-            current_sum       = zeros(1, num_compartments); % Sum of all currents     (active, leak, axial, gap and applied).
             conductance_sum   = zeros(1, num_compartments); % Sum of all conductances (active, leak, axial and gap)
             
             for compartment = 1:num_compartments
                 V = neurons(neuron).compartments(compartment).voltage;
                 if compartment == AIS, channels = 1:2; else channels = 3:num_channels; end
-                if compartment == AIS, I_axial_direction = 1; else I_axial_direction = -1; end % Axial current direction is positive for current flowing into AIS.
                 for channel = channels % Iterate through the set of channels.
 
                     channel_current = g_channels(neuron, channel)* (E_all(neuron, channel) -V);
@@ -195,7 +182,6 @@ function model()
                         neurons(neuron).channels(channel).I = channel_current;
                     end
                     I_hist(neuron, channel, time_step) =  channel_current;
-                    current_sum(compartment) = current_sum(compartment) + channel_current; 
                     I_weight     = g_channels(neuron, channel)*  E_all(neuron, channel); % Single channel current weight.
                     I_weighted_sum(compartment)  = I_weighted_sum(compartment)  + I_weight;
                     conductance_sum(compartment) = conductance_sum(compartment) + g_channels(neuron, channel);
@@ -210,35 +196,22 @@ function model()
                     I_gap_weight   = g_gap*neurons(other_neuron).compartments(Soma).voltage;
                     conductance_sum(Soma) = conductance_sum(Soma) + g_leaks(neuron, Soma) + neurons(neuron).g_axial + g_gap;
                     I_weighted_sum(Soma)  = I_weighted_sum(Soma)  + I_leak_weight + I_axial_weight + I_gap_weight + I_inj(neuron);
-                    current_sum(Soma)     = current_sum(Soma)     + leak_current + axial_current*I_axial_direction + coupling_current*coupling_current_direction + I_inj(neuron);
-                    %I_sum_hist(neuron, compartment, time_step) = current_sum(compartment); % Checking current sum calculations
                 else
                     if compartment ~= AIS, STOP; end
                     I_hist(neuron, Leak_AIS, time_step) = leak_current;
                     I_axial_weight = neurons(neuron).g_axial*neurons(neuron).compartments(Soma).voltage;
                     conductance_sum(AIS)  = conductance_sum(AIS)  + g_leaks(neuron, AIS) + neurons(neuron).g_axial;
                     I_weighted_sum(AIS)   = I_weighted_sum(AIS)   + I_leak_weight + I_axial_weight;
-                    current_sum(AIS)      = current_sum(AIS)      + leak_current  + axial_current*I_axial_direction;
-                    %I_sum_hist(neuron, compartment, time_step) = current_sum(compartment); % Checking current sum calculations
                 end
                 
             end
  
             % Now calculate new voltage from currents.
             for compartment = 1:num_compartments
-                V = neurons(neuron).compartments(compartment).voltage;
-                integration_method = 'exp_Euler';
-                switch integration_method
-                    case 'exp_Euler'
-                        V_inf  =  I_weighted_sum(compartment)/conductance_sum(compartment);   % Steady state voltage.
-                        tau_V  =  neurons(neuron).compartments(compartment).C/(conductance_sum(compartment));   % Membrane time constant.
-                        neurons(neuron).compartments(compartment).voltage      =  V_inf + (V-V_inf)*exp(-dt/tau_V);
-                    case 'forward_Euler'
-                        dV = current_sum(compartment)/neurons(neuron).compartments(compartment).C*dt;
-                        neurons(neuron).compartments(compartment).voltage = V + dV;
-                    otherwise
-                        STOP
-                end
+                V      = neurons(neuron).compartments(compartment).voltage;
+                V_inf  =  I_weighted_sum(compartment)/conductance_sum(compartment);   % Steady state voltage.
+                tau_V  =  neurons(neuron).compartments(compartment).C/(conductance_sum(compartment));   % Membrane time constant.
+                neurons(neuron).compartments(compartment).voltage      =  V_inf + (V-V_inf)*exp(-dt/tau_V);
             end
 
             % Record history.
@@ -257,34 +230,22 @@ function model()
             Ca = neurons(neuron).Ca;
             F_Ca = neurons(neuron).F_Ca;
             tau_Ca = neurons(neuron).tau_Ca;
-            integration = 'ExpEuler';
-            switch integration
-                case 'RK4'
-                    k1 = ( -F_Ca * I_Ca -  Ca              + Ca_steady_state) / tau_Ca;
-                    k2 = ( -F_Ca * I_Ca - (Ca + 0.5*dt*k1) + Ca_steady_state) / tau_Ca;
-                    k3 = ( -F_Ca * I_Ca - (Ca + 0.5*dt*k2) + Ca_steady_state) / tau_Ca;
-                    k4 = ( -F_Ca * I_Ca - (Ca +     dt*k3) + Ca_steady_state) / tau_Ca;
-                    dCa = (1/6)*dt*(k1 + 2*k2 + 2*k3 + k4);
-                    neurons(neuron).Ca = Ca + dCa;
-                case 'ForwardEuler'
-                    dCa = (-F_Ca * I_Ca - Ca + Ca_steady_state) / tau_Ca * dt;
-                    neurons(neuron).Ca = neurons(neuron).Ca + dCa;
-                case 'ExpEuler'
-                    Ca_steady_state_adj = Ca_steady_state + I_Ca*F_Ca; % Adjusted steady state [Ca++] includes Ca++ current.
-                    neurons(neuron).Ca = Ca_steady_state_adj + (Ca - Ca_steady_state_adj)*exp(-dt/tau_Ca);  %inf + (curr - inf)*exp(-dt/tau); 
-                otherwise
-                    STOP
-            end
+            
+            Ca_steady_state_adj = Ca_steady_state + I_Ca*F_Ca; % Adjusted steady state [Ca++] includes Ca++ current.
+            neurons(neuron).Ca = Ca_steady_state_adj + (Ca - Ca_steady_state_adj)*exp(-dt/tau_Ca);  %inf + (curr - inf)*exp(-dt/tau); 
             if (neurons(neuron).Ca < 0)
                 disp('Negative [Ca++] value. Stopping'), STOP
             end
         end
         
         %%% Update and display time step.
-        if (time_step/100 == floor(time_step/100))
+        if sim_time/100 == floor(sim_time/100),
             disp(num2str(sim_time))
         end
         time_step = time_step+1;
+        if (time_step/100 == floor(time_step/100))
+            disp(num2str(time_step))
+        end
     end % End main loop
     toc
     
@@ -515,12 +476,7 @@ function [m, h] = get_channel_state(neuron, channel, V, Ca, old_m, old_h, dt)
         otherwise
             STOP
     end
-%     if (false)
-%         dm = (m_inf - old_m)/tau_m * dt;  % OLD CODE: Forward Euler.
-%         dh = (h_inf - old_h)/tau_h * dt;
-%         m = old_m + dm;
-%         h = old_h + dh;
-%     end
+
     if (m < 0 || m > 1 ), disp ('m out of range. Stopping.'); STOP; end
     if (h < 0 || h > 1 ), disp ('h out of range. Stopping.'); STOP; end
     

@@ -2,8 +2,6 @@
 
 % TODO
 %   Add Q10s
-%   Add RK4 integration
-
 
 function model()
     tic
@@ -63,31 +61,12 @@ function model()
     g_max_all = [ 300  52.5         55.2  9   2.7   0.054  1890    6000    200    570; ...       % AB % [S] Conductance values for all (non-leak) channels.
                  1100  150          22.5  60  4.38  0.219  1576.8  251.85  39.42  0   ]*10^-6;   % PD
 
-    % Farzan's maximal conductances ... 
-    g_max_all = [25.5556   3.88889   3.1  0.5 0.1   0.002  70      300     0.8    0; ...
-                 55.479528 7.39727   
 
-
-        ]*10^-6;
              
              
 %     % No descending inputs
 %     g_max_all = [ 300  52.5         55.2  9   2.7   0.054  1890    6000    200    0;   ...       % AB % [S] Conductance values for all (non-leak) channels.
 %                  1100  150            10  54  4.38  0.219  1576.8  251.85  39.42  0   ]*10^-6;   % PD
-%     %TESTING %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%     g_max_all = [ 300  52.5         55.2  45   2.7   0.054  1890    6000    200    0;   ...       % AB % [S] Conductance values for all (non-leak) channels.
-%                  1100  150          22.5  60  4.38  0.219  1576.8  251.85  39.42  0   ]*10^-6;   % PD
-
-             
-%    g_max_all = [0 0         0 0 0 0 0 0 0 0; 0 0          0 0 0 0 0 0 0 0 ];
-    %g_max_all = [300 52.5    0 0 0 0 0 0 0 0; 1100 150     0 0 0 0 0 0 0 0 ]*10^-6; % Just turn on AIS conductances.
-    
-    % Just turn on soma conductances.
-%      g_max_all = [ 0  0          55.2  9   2.7   0.054  1890    6000    200    570; ...       % AB % [S] Conductance values for all (non-leak) channels.
-%                    0  0          22.5  60  4.38  0.219  1576.8  251.85  39.42  0   ]*10^-6;   % PD    
-    % Just turn on PD soma conductances and some AB conductances.
-%      g_max_all = [ 0  0             0   9     0      0       0       0    0    0; ...       % AB % [S] Conductance values for all (non-leak) channels.
-%                    0  0          22.5  60  4.38  0.219  1576.8  251.85  39.42  0   ]*10^-6;   % PD                   
 
          % Channel  Na  K(AIS)  CaT  CaS  nap  h   K(soma) KCa  A   proc
     a_exponents = [ 3   4       3    3    3    1   4       4    3   1     ; ... % AB
@@ -134,8 +113,6 @@ function model()
     %%%%%%%%%%%%%%%%%
     tic
     for sim_time = dt:dt:sim_length
-
-%        disp('xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx')
 
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         % Find channel activation and inactivations  %
@@ -304,13 +281,7 @@ function model()
         end
         
         %%% Update and display time step.
-        if sim_time/100 == floor(sim_time/100),
-            disp(num2str(sim_time))
-        end
         time_step = time_step+1;
-        if (time_step/100 == floor(time_step/100))
-            disp(num2str(time_step))
-        end
     end % End main loop
     toc
     
