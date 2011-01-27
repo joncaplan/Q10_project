@@ -49,14 +49,13 @@ function model()
     % Reversal potentials.
     E_Na   =  50; % [mV] 
     E_K    = -80;
-    E_Ca   =   0; % (Placeholder. Nernst calculation later.)
+    E_Ca   = NaN; % (Placeholder. Nernst calculation later.)
     E_Nap  =  50;
     E_H    = -20;
-    E_KCa  = -80;
-    E_A    = -80;
     E_proc =   0;
-    E_all = [E_Na E_K E_Ca E_Ca E_Nap E_H E_K E_KCa E_A E_proc; ...      % AB [V] Store reversal potentials in vector which matches the channel vector. (Ca values are placeholders.)
-             E_Na E_K E_Ca E_Ca E_Nap E_H E_K E_KCa E_A E_proc  ]*10^-3; % PD      
+            %  Na   K  CaS  CaT  Nap   H   K   KCa  A   proc
+    E_all = [E_Na E_K E_Ca E_Ca E_Nap E_H E_K E_K   E_K E_proc; ...      % AB [V] Store reversal potentials in vector which matches the channel vector. (Ca values are placeholders.)
+             E_Na E_K E_Ca E_Ca E_Nap E_H E_K E_K   E_K E_proc  ]*10^-3; % PD      
 
     % Maximal conductances
     %      Channels are:
@@ -103,7 +102,7 @@ function model()
         neurons(neuron).Ca = Ca_steady_state; % Ca++ concentration in soma. (Axon lacks Ca++ gated or permiable channels.)
         for channel = 1:num_channels
             neurons(neuron).channels(channel).m = 0; % Begin with all channels closed.
-            neurons(neuron).channels(channel).h = 0;
+            neurons(neuron).channels(channel).h = 1;
         end
     end
 
@@ -472,7 +471,7 @@ function [m, h] = get_channel_state(neuron, channel, V, Ca, old_m, old_h, dt)
             end
             
         case CaS % I_CaS
-            m_inf = sigmoid(-1, 22.5, 8.5, V);
+            m_inf = sigmoid(-1, 22, 8.5, V);
             tau_m = tau_sigmoid(16, -13.1, -1, 25.1, 26.4, V);
             
         case nap % I_NaP

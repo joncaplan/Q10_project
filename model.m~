@@ -49,12 +49,11 @@ function model()
     % Reversal potentials.
     E_Na   =  50; % [mV] 
     E_K    = -80;
-    E_Ca   =   0; % (Placeholder. Nernst calculation later.)
+    E_Ca   = NaN; % (Placeholder. Nernst calculation later.)
     E_Nap  =  50;
     E_H    = -20;
-    E_KCa  = -80;
-    E_A    = -80;
     E_proc =   0;
+            %  N
     E_all = [E_Na E_K E_Ca E_Ca E_Nap E_H E_K E_KCa E_A E_proc; ...      % AB [V] Store reversal potentials in vector which matches the channel vector. (Ca values are placeholders.)
              E_Na E_K E_Ca E_Ca E_Nap E_H E_K E_KCa E_A E_proc  ]*10^-3; % PD      
 
@@ -70,8 +69,13 @@ function model()
     end
 
     if Farzans_model 
-        g_max_all = [ 25.5556 3.88889   3.1 0.5 0.1 0.002 70 300 0.8 0 ; ...       % AB % [S] Conductance values for all (non-leak) channels.
-                     55.479528 7.39727 ]*10^-6;   % PD
+        g_max_all = [ 25.5556  3.88889   3.1 0.5 0.1   0.002   70      300     0.8    0 ; ...       % AB % [S] Conductance values for all (non-leak) channels.
+                     55.479528 7.39727   1.6 2   0.2   0.01    72      110     1.8    0 ]*10^-6;   % PD
+                 
+        neurons(AB).compartments(AIS).C  =  0.111111111 *10^-9; % [F] Capacitance of each compartment.
+        neurons(AB).compartments(Soma).C =  1.0         *10^-9; % [F]
+        neurons(PD).compartments(AIS).C  =  0.36986     *10^-9; % [F]
+        neurons(PD).compartments(Soma).C =  1.0         *10^-9; % [F]
     end
     
          % Channel  Na  K(AIS)  CaT  CaS  nap  h   K(soma) KCa  A   proc
@@ -98,7 +102,7 @@ function model()
         neurons(neuron).Ca = Ca_steady_state; % Ca++ concentration in soma. (Axon lacks Ca++ gated or permiable channels.)
         for channel = 1:num_channels
             neurons(neuron).channels(channel).m = 0; % Begin with all channels closed.
-            neurons(neuron).channels(channel).h = 0;
+            neurons(neuron).channels(channel).h = 1;
         end
     end
 
@@ -467,7 +471,7 @@ function [m, h] = get_channel_state(neuron, channel, V, Ca, old_m, old_h, dt)
             end
             
         case CaS % I_CaS
-            m_inf = sigmoid(-1, 22.5, 8.5, V);
+            m_inf = sigmoid(-1, 22, 8.5, V);
             tau_m = tau_sigmoid(16, -13.1, -1, 25.1, 26.4, V);
             
         case nap % I_NaP
