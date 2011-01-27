@@ -20,6 +20,9 @@ function model()
     g_gap               = 0.75*10^-6; % [S] Conductance between the soma of the two neurons.
     neurons(AB).g_axial = 0.3 *10^-6; % [S] Conductance between the two compartments of the AB neuron.
     neurons(PD).g_axial = 1.05*10^-6; % [S] Conductance between the two compartments of the PD neuron.
+    
+    descending_inputs   = true; % 
+    Farzans_model       = false; % Controls whether to use constants and dynamics from Farzan's model.
 
 %     % Testing with no connections between compartments.
      g_gap               = 0;     % [S] Conductance between the soma of the two neurons.
@@ -58,16 +61,24 @@ function model()
     % Maximal conductances
     %      Channels are:
     %      (AIS)  NA   K     (soma) CaT   CaS nap   H      K       KCa     A      proc   
-    g_max_all = [ 300  52.5         55.2  9   2.7   0.054  1890    6000    200    570; ...       % AB % [S] Conductance values for all (non-leak) channels.
-                 1100  150          22.5  60  4.38  0.219  1576.8  251.85  39.42  0   ]*10^-6;   % PD
+    if descending_inputs    
+        g_max_all = [ 300  52.5         55.2  9   2.7   0.054  1890    6000    200    570; ...       % AB % [S] Conductance values for all (non-leak) channels.
+                     1100  150          22.5  60  4.38  0.219  1576.8  251.85  39.42  0   ]*10^-6;   % PD
+    else
+        g_max_all = [ 300  52.5         55.2  9   2.7   0.054  1890    6000    200    0;   ...       % AB % [S] Conductance values for all (non-leak) channels.
+                     1100  150            10  54  4.38  0.219  1576.8  251.85  39.42  0   ]*10^-6;   % PD
+    end
 
-
-             
-             
-%     % No descending inputs
-%     g_max_all = [ 300  52.5         55.2  9   2.7   0.054  1890    6000    200    0;   ...       % AB % [S] Conductance values for all (non-leak) channels.
-%                  1100  150            10  54  4.38  0.219  1576.8  251.85  39.42  0   ]*10^-6;   % PD
-
+    if Farzans_model 
+        g_max_all = [ 25.5556  3.88889   3.1 0.5 0.1   0.002   70      300     0.8    0 ; ...       % AB % [S] Conductance values for all (non-leak) channels.
+                     55.479528 7.39727   1.6 2   0.2   0.01    72      110     1.8    0 ]*10^-6;   % PD
+                 
+        neurons(AB).compartments(AIS).C  =  0.111111111 *10^-9; % [F] Capacitance of each compartment.
+        neurons(AB).compartments(Soma).C =  1.0         *10^-9; % [F]
+        neurons(PD).compartments(AIS).C  =  0.36986     *10^-9; % [F]
+        neurons(PD).compartments(Soma).C =  1.0         *10^-9; % [F]
+    end
+    
          % Channel  Na  K(AIS)  CaT  CaS  nap  h   K(soma) KCa  A   proc
     a_exponents = [ 3   4       3    3    3    1   4       4    3   1     ; ... % AB
                     3   4       3    3    3    1   4       4    4   1    ];    % PD
