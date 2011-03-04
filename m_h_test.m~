@@ -1,0 +1,78 @@
+Ca = 0.5;  % [μM] Intracellular [Ca++]. (Elsewhere [Ca++] is always in Mol.)
+neuron = 1; % [AB]
+
+V=  -61.8 %[37.1  -61.8 -46.2]
+    for channel = 3:10
+
+        % Channel dynamics functions table.
+        Na=1; K_AIS=2; CaT=3; CaS=4; nap=5; H=6; K_soma=7; KCa=8; A=9; proc=10; % Enumeration of all the currents.
+
+        switch channel
+            case Na % I_Na (Axon initial segment)
+                m_inf = sigmoid(-1, 24.7, 5.29, V);
+                h_inf = sigmoid(+1, 48.9, 5.18, V);
+
+            case CaT % I_CaT
+                m_inf = sigmoid(-1, 25, 7.2, V);
+                h_inf = sigmoid(+1, 36, 7  , V);
+
+            case CaS % I_CaS
+                m_inf = sigmoid(-1, 22, 8.5, V);
+                h_inf = 1;
+            
+            case nap % I_NaP
+                m_inf = sigmoid(-1, 26.8, 8.2, V);
+                h_inf = sigmoid( 1, 48.5, 4.8, V);
+
+            case H % I_h
+                m_inf = sigmoid( 1, 70, 6, V);
+                h_inf = 1;
+
+            case {K_AIS, K_soma} % I_K {axon initial segment, soma}
+                m_inf = sigmoid(-1, 14.2, 11.8, V);
+                h_inf = 1;
+
+            case KCa % I_KCa
+                h_inf = 1;
+                switch neuron
+                    case 1
+                        m_inf = Ca/(Ca + 30) * sigmoid(-1, 51, 4, V);
+                    case 2
+                        m_inf = Ca/(Ca + 30) * sigmoid(-1, 51, 8, V);
+                    otherwise 
+                        STOP
+                end        
+
+            case A % I_A 
+                m_inf = sigmoid( -1, 27,   8.7,  V);
+                h_inf = sigmoid( +1, 56.9, 4.9,  V);
+
+            case proc % I_proc
+                m_inf = sigmoid( -1, 12, 3.05,   V);
+                h_inf = 1;
+
+
+            otherwise
+                STOP
+
+        end
+             channel, m_inf , h_inf
+             activations(channel)   = m_inf;
+             inactivations(channel) = m_inf;
+    end
+    % H, Kd, proc
+    % I = g_max * m^a * (V - E)
+    %  m^a = I/ (V - E)/g_max 
+    E_H    = -20;
+    E_K    = -80;
+    E_proc =   0;
+    
+    I_H    = -0.19*10^-9; % nA
+    I_Kd   = 0;
+    I_proc = 0;
+    
+    m_inf_H    = (I_H/    ((V - E_H   )*10^-3)/(0.054*10^-6))
+    m_inf_Kd   = (I_Kd/   ((V - E_K   )*10^-3)/(1890 *10^-6))^(1/4)
+    m_inf_proc = (I_proc/ ((V - E_proc)*10^-3)/(570  *10^-6))
+    
+    
